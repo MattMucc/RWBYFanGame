@@ -322,6 +322,7 @@ void APlayableCharacter::EnterOverTheShoulderMode()
 		return;
 
 	Tags.Remove(FName("CanAim"));
+	Tags.Add(FName("IsAiming"));
 	PlayerBasedMovement();
 	startSpringArmLocation = springArmComponent->GetRelativeLocation();
 	targetSpringArmLocation = overTheShoulderSpringArmLocation;
@@ -350,6 +351,7 @@ void APlayableCharacter::EnterOverTheShoulderMode()
 
 void APlayableCharacter::ExitOverTheShoulderMode()
 {
+	Tags.Remove(FName("IsAiming"));
 	GetWorld()->GetTimerManager().ClearTimer(springArmLocationTimer);
 	GetWorld()->GetTimerManager().ClearTimer(springArmLengthTimer);
 	CameraBasedMovement();
