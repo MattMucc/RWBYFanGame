@@ -4,8 +4,9 @@
 #include "Actors/PlayerControllers/GamePlayerController.h"
 #include "Blueprint/SlateBlueprintLibrary.h"
 #include "Blueprint/WidgetTree.h"
-#include "Components/VerticalBox.h"
+#include "Components/Image.h"
 #include "Components/Spacer.h"
+#include "Components/VerticalBox.h"
 #include "Widgets/CharacterInformation.h"
 
 void UPlayerHud::NativeConstruct()
@@ -18,6 +19,7 @@ void UPlayerHud::NativeConstruct()
 		if (playerController)
 		{
 			gamePlayerController = playerController;
+			crosshair->SetVisibility(ESlateVisibility::Hidden);
 		}
 		else
 		{

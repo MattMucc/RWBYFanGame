@@ -11,7 +11,7 @@
 AProjectile::AProjectile()
 {
 	PrimaryActorTick.bCanEverTick = true;
-	PrimaryActorTick.bStartWithTickEnabled = false;
+	PrimaryActorTick.bStartWithTickEnabled = true;
 
 	sphereCollision = CreateDefaultSubobject<USphereComponent>("SphereCollision");
 	SetRootComponent(sphereCollision);
@@ -37,6 +37,7 @@ AProjectile::AProjectile()
 void AProjectile::BeginPlay()
 {
 	Super::BeginPlay();
+	UE_LOG(LogTemp, Log, TEXT("Spawned projectile"));
 	projectileMovementComponent->InitialSpeed = velocity;
 	projectileMovementComponent->MaxSpeed = velocity;
 	AController* controller = Cast<AController>(GetOwner());

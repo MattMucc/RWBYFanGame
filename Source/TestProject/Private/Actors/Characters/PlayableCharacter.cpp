@@ -7,6 +7,7 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/ChildActorComponent.h"
+#include "Components/Image.h"
 #include "Components/InputComponent.h"
 #include "Components/VerticalBox.h"
 #include "EnhancedInputComponent.h"
@@ -33,12 +34,17 @@ APlayableCharacter::APlayableCharacter()
 	springArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	springArmComponent->SetupAttachment(RootComponent);
 	springArmComponent->TargetArmLength = 400.0f; // The camera follows at this distance behind the character	
-	springArmComponent->bUsePawnControlRotation = true; // Rotate the arm based on the controller
+	traditionalThirdPersonSpringArmLocation = FVector(0.0f, 0.0f, 50.0f);
+	overTheShoulderSpringArmLocation = FVector(0.0f, 50.0f, 90.0f);
+	traditionalThirdPersonSpringArmLength = 400.0f;
+	overTheShoulderSpringArmLength = 300.0f;
+	springArmLerpSpeed = 1.0f;
+	springArmLocationElpasedTime = 0.0f;
+	springArmLengthElapsedTime = 0.0f;
 
 	// Create a follow camera
 	cameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	cameraComponent->SetupAttachment(springArmComponent, USpringArmComponent::SocketName); // Attach the camera to the end of the boom and let the boom adjust to match the controller orientation
-	cameraComponent->bUsePawnControlRotation = false; // Camera does not rotate relative to arm
 
 	// Create character components
 	auraComponent = CreateDefaultSubobject<UAuraComponent>("AuraComponent");
@@ -49,10 +55,6 @@ APlayableCharacter::APlayableCharacter()
 
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
-
-	// Configure character movement
-	GetCharacterMovement()->bOrientRotationToMovement = true; // Character moves in the direction of input...	
-	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f); // ...at this rotation rate
 
 	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
 	// instead of recompiling to adjust them
@@ -65,15 +67,11 @@ APlayableCharacter::APlayableCharacter()
 	GetCharacterMovement()->MaxAcceleration = 1500;
 	GetCharacterMovement()->BrakingDecelerationWalking = 10000.f;
 
-	// Don't rotate when the controller rotates. Let that just affect the camera.
-	bUseControllerRotationPitch = false;
-	bUseControllerRotationYaw = false;
-	bUseControllerRotationRoll = false;
-
 	// Setting variable values
 	horizontalSensitivityMultiplier = 1.f;
 	verticalSensitivityMultiplier = 1.f;
 
+	// Character Movement Settings
 	groundFriction = GetCharacterMovement()->GroundFriction;
 	gravityScale = GetCharacterMovement()->GravityScale;
 	walkingMaxAcceleration = GetCharacterMovement()->MaxAcceleration;
@@ -81,6 +79,7 @@ APlayableCharacter::APlayableCharacter()
 	walkingBrakingDeceleration = GetCharacterMovement()->BrakingDecelerationWalking;
 
 	SetActorLabel(characterName.ToString());
+	CameraBasedMovement();
 }
 
 // Called when the game starts or when spawned
@@ -94,10 +93,13 @@ void APlayableCharacter::BeginPlay()
 		return;
 	}
 
+	springArmComponent->SetRelativeLocation(traditionalThirdPersonSpringArmLocation);
 	groundFriction = GetCharacterMovement()->GroundFriction;
 	gravityScale = GetCharacterMovement()->GravityScale;
 	walkingMaxAcceleration = GetCharacterMovement()->MaxAcceleration;
 	walkingBrakingDeceleration = GetCharacterMovement()->BrakingDecelerationWalking;
+
+	Tags.Add(FName("CanAim"));
 
 	LoadStats();
 	CreateCharacterInformation();
@@ -147,6 +149,8 @@ void APlayableCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		// Shooting
 		//EnhancedInputComponent->BindAction(aimAction, ETriggerEvent::Triggered, weaponComponent, &UWeaponComponent::ScopeIn);
 		//EnhancedInputComponent->BindAction(aimAction, ETriggerEvent::Completed, weaponComponent, &UWeaponComponent::ScopeOut);
+		EnhancedInputComponent->BindAction(aimAction, ETriggerEvent::Triggered, this, &APlayableCharacter::EnterOverTheShoulderMode);
+		EnhancedInputComponent->BindAction(aimAction, ETriggerEvent::Completed, this, &APlayableCharacter::ExitOverTheShoulderMode);
 		EnhancedInputComponent->BindAction(shootAction, ETriggerEvent::Triggered, weaponComponent, &UWeaponComponent::TryShoot);
 		EnhancedInputComponent->BindAction(reloadAction, ETriggerEvent::Triggered, weaponComponent, &UWeaponComponent::TryReload);
 
@@ -243,6 +247,135 @@ void APlayableCharacter::LoadStats()
 	weaponComponent->meleeDamage = statsInstance->meleeDamage;
 	weaponComponent->projectileDamage = statsInstance->projectileDamage;
 	GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, TEXT("Base Character Stats Loaded!"));
+}
+
+void APlayableCharacter::LerpSpringArmLength()
+{
+	springArmLengthElapsedTime += 0.01f;
+	float alpha = FMath::Clamp(springArmLengthElapsedTime / springArmLerpSpeed, 0.0f, 1.0f);
+	float alphaSmooth = FMath::InterpEaseInOut(0.0f, 1.0f, alpha, 2.0f); // Easing exponent of 2
+	float newLength = FMath::Lerp(startSpringArmLength, targetSpringArmLength, alphaSmooth);
+	springArmComponent->TargetArmLength = newLength;
+	if (alpha >= 1.0f)
+	{
+		springArmComponent->TargetArmLength = targetSpringArmLength;
+		GetWorld()->GetTimerManager().ClearTimer(springArmLengthTimer);
+	}
+}
+
+void APlayableCharacter::LerpSpringArmLocation()
+{
+	springArmLocationElpasedTime += 0.01f;
+	float alpha = FMath::Clamp(springArmLocationElpasedTime / springArmLerpSpeed, 0.01f, 1.0f);
+	float alphaSmooth = FMath::InterpEaseInOut(0.0f, 1.0f, alpha, 2.0f); // Easing exponent of 2
+	FVector newLocation = FMath::Lerp(startSpringArmLocation, targetSpringArmLocation, alphaSmooth);
+	springArmComponent->SetRelativeLocation(newLocation);
+	if (alpha >= 1.0f)
+	{
+		Tags.Add(FName("CanAim"));
+		springArmComponent->SetRelativeLocation(targetSpringArmLocation);
+		GetWorld()->GetTimerManager().ClearTimer(springArmLocationTimer);
+	}
+}
+
+// Your traditional third-person RPG movement
+void APlayableCharacter::CameraBasedMovement()
+{
+	// Camera Boom Settings
+	springArmComponent->bUsePawnControlRotation = true; // Rotate the arm based on the controller
+
+	// Camera Settings
+	cameraComponent->bUsePawnControlRotation = false; // Camera does not rotate relative to arm
+
+	// Configure character movement
+	GetCharacterMovement()->bOrientRotationToMovement = true; // Character moves in the direction of input...	
+	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f); // ...at this rotation rate
+
+	// Don't rotate when the controller rotates. Let that just affect the camera.
+	bUseControllerRotationPitch = false;
+	bUseControllerRotationYaw = false;
+	bUseControllerRotationRoll = false;
+}
+
+// Also known as Over The Shoulder
+void APlayableCharacter::PlayerBasedMovement()
+{
+	// Camera Boom Settings
+	springArmComponent->bUsePawnControlRotation = true;
+
+	//Camera Settings
+	cameraComponent->bUsePawnControlRotation = false;
+
+	// Character Movement Settings
+	GetCharacterMovement()->bOrientRotationToMovement = false;
+	GetCharacterMovement()->RotationRate = FRotator(0.0f, 0.0f, 360.0f);
+
+	// Controller Rotation Settings
+	bUseControllerRotationPitch = false;
+	bUseControllerRotationYaw = true;
+	bUseControllerRotationRoll = false;
+}
+
+void APlayableCharacter::EnterOverTheShoulderMode()
+{
+	if (!ActorHasTag(FName("CanAim")))
+		return;
+
+	Tags.Remove(FName("CanAim"));
+	PlayerBasedMovement();
+	startSpringArmLocation = springArmComponent->GetRelativeLocation();
+	targetSpringArmLocation = overTheShoulderSpringArmLocation;
+	startSpringArmLength = springArmComponent->TargetArmLength;
+	targetSpringArmLength = overTheShoulderSpringArmLength;
+	springArmLocationElpasedTime = 0.0f;
+	springArmLengthElapsedTime = 0.0f;
+	APlayerController* controller = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+	if (!controller)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to get APlayerController in APlayableCharacter::LerpSpringArmLocation!"));
+		return;
+	}
+
+	AGamePlayerController* gamePlayerController = Cast<AGamePlayerController>(controller);
+	if (!gamePlayerController)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to cast to AGamePlayerController in APlayableCharacter::LerpSpringArmLocation!"));
+		return;
+	}
+
+	gamePlayerController->playerHud->crosshair->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	GetWorld()->GetTimerManager().SetTimer(springArmLocationTimer, this, &APlayableCharacter::LerpSpringArmLocation, 0.01f, true);
+	GetWorld()->GetTimerManager().SetTimer(springArmLengthTimer, this, &APlayableCharacter::LerpSpringArmLength, 0.01f, true);
+}
+
+void APlayableCharacter::ExitOverTheShoulderMode()
+{
+	GetWorld()->GetTimerManager().ClearTimer(springArmLocationTimer);
+	GetWorld()->GetTimerManager().ClearTimer(springArmLengthTimer);
+	CameraBasedMovement();
+	startSpringArmLocation = springArmComponent->GetRelativeLocation();
+	targetSpringArmLocation = traditionalThirdPersonSpringArmLocation;
+	startSpringArmLength = springArmComponent->TargetArmLength;
+	targetSpringArmLength = traditionalThirdPersonSpringArmLength;
+	springArmLocationElpasedTime = 0.0f;
+	springArmLengthElapsedTime = 0.0f;
+	APlayerController* controller = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+	if (!controller)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to get APlayerController in APlayableCharacter::ExitOverTheShoulderMode!"));
+		return;
+	}
+
+	AGamePlayerController* gamePlayerController = Cast<AGamePlayerController>(controller);
+	if (!gamePlayerController)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to cast to AGamePlayerController in APlayableCharacter::ExitOverTheShoulderMode!"));
+		return;
+	}
+
+	gamePlayerController->playerHud->crosshair->SetVisibility(ESlateVisibility::Hidden);
+	GetWorld()->GetTimerManager().SetTimer(springArmLocationTimer, this, &APlayableCharacter::LerpSpringArmLocation, 0.01f, true);
+	GetWorld()->GetTimerManager().SetTimer(springArmLengthTimer, this, &APlayableCharacter::LerpSpringArmLength, 0.01f, true);
 }
 
 void APlayableCharacter::Move(const FInputActionValue& Value)

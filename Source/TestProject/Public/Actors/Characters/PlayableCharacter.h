@@ -64,6 +64,16 @@ public:
 
 	// Camera
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Camera)
+	FVector traditionalThirdPersonSpringArmLocation;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Camera)
+	FVector overTheShoulderSpringArmLocation;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Camera)
+	float traditionalThirdPersonSpringArmLength;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Camera)
+	float overTheShoulderSpringArmLength;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Camera)
+	float springArmLerpSpeed;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Camera)
 	float horizontalSensitivityMultiplier;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Camera)
 	float verticalSensitivityMultiplier;
@@ -79,6 +89,20 @@ protected:
 	// Initialization Functions
 	UFUNCTION()
 	void CreateCharacterInformation();
+
+	// Movement Mode Function
+	UFUNCTION()
+	void LerpSpringArmLength();
+	UFUNCTION()
+	void LerpSpringArmLocation();
+	UFUNCTION()
+	void CameraBasedMovement();
+	UFUNCTION()
+	void PlayerBasedMovement();
+	UFUNCTION()
+	void EnterOverTheShoulderMode();
+	UFUNCTION()
+	void ExitOverTheShoulderMode();
 
 	// Save/Load Functions
 	UFUNCTION()
@@ -109,6 +133,16 @@ protected:
 	// Save/Load Instance
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Save/Load")
 	class UBaseCharacterSaveGame* statsInstance;
+
+	// Spring Arm Lerp
+	FTimerHandle springArmLocationTimer;
+	FTimerHandle springArmLengthTimer;
+	FVector startSpringArmLocation;
+	FVector targetSpringArmLocation;
+	float startSpringArmLength;
+	float targetSpringArmLength;
+	float springArmLocationElpasedTime;
+	float springArmLengthElapsedTime;
 
 public:	
 	virtual void Tick(float DeltaTime) override;
