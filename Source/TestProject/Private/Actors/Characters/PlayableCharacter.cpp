@@ -86,11 +86,35 @@ APlayableCharacter::APlayableCharacter()
 void APlayableCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	playerController = UGameplayStatics::GetPlayerController(GetWorld(), 0);
-	if (!playerController)
+	AController* controller = GetController();
+	if (controller && controller->IsPlayerController())
 	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to get APlayerController in APlayableCharacter::BeginPlay!"));
-		return;
+		playerController = Cast<APlayerController>(controller);
+		if (!playerController)
+		{
+			UE_LOG(LogTemp, Error, TEXT("Failed to get APlayerController in APlayableCharacter::BeginPlay!"));
+			return;
+		}
+
+		if (UEnhancedInputLocalPlayerSubsystem* subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(playerController->GetLocalPlayer()))
+		{
+			subsystem->AddMappingContext(defaultMappingContext, 0); //Default mapping context is set in AGamePlayerControler::BeginPlay
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("Failed to get UEnhancedInputLocalPlayerSubsystem in APlayableCharacter::BeginPlay!"));
+			return;
+		}
+	}
+	else
+	{
+		// This character is currently AI-controlled
+		playerController = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+		if (!playerController)
+		{
+			UE_LOG(LogTemp, Error, TEXT("Failed to get APlayerController in APlayableCharacter::BeginPlay!"));
+			return;
+		}
 	}
 
 	springArmComponent->SetRelativeLocation(traditionalThirdPersonSpringArmLocation);
@@ -101,17 +125,8 @@ void APlayableCharacter::BeginPlay()
 
 	Tags.Add(FName("CanAim"));
 
-	LoadStats();
+	//LoadStats();
 	CreateCharacterInformation();
-	if (UEnhancedInputLocalPlayerSubsystem* subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(playerController->GetLocalPlayer()))
-	{
-		subsystem->AddMappingContext(defaultMappingContext, 0); //Default mapping context is set in AGamePlayerControler::BeginPlay
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to get UEnhancedInputLocalPlayerSubsystem in APlayableCharacter::BeginPlay!"));
-		return;
-	}
 }
 
 // Called every frame
@@ -181,7 +196,19 @@ void APlayableCharacter::PossessedBy(AController* newController)
 void APlayableCharacter::CreateCharacterInformation()
 {
 	APlayerController* controller = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+	if (!controller)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to get APlayerController in APlayableCharacter::CreateCharacterInformation!"));
+		return;
+	}
+
 	characterInformationWidget = CreateWidget<UCharacterInformation>(controller, characterInformationWidgetClass);
+	if (!characterInformationWidget)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to create UCharacterInformation widget in APlayableCharacter::CreateCharacterInformation!"));
+		return;
+	}
+
 	characterInformationWidget->owningCharacter = this;
 	characterInformationWidget->InitializeCharacterInformation();
 	AGamePlayerController* gamePlayerController = Cast<AGamePlayerController>(controller);

@@ -58,6 +58,9 @@ void UCharacterInformation::InitializeCharacterInformation()
 		return;
 	}
 
+	// Player
+	name->SetText(FText::FromName(owningCharacter->characterName));
+
 	// Aura
 	auraGauge->SetPercent(auraComponent->aura / auraComponent->maxAura);
 	auraDamageGauge->SetPercent(auraGauge->Percent);
